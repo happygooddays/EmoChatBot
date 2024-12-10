@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 600px;
+            background-color: #ffffff;
+            border-radius: 15px;
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+        }
+
+        .chat-box {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background-color: #fafafa;
+            font-size: 16px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 12px;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            word-wrap: break-word;
+            flex-direction: row;
+        }
+
+        .message .left {
+            padding: 8px 12px;
+            border-radius: 10px;
+            max-width: 80%; /* 텍스트 길이에 맞게 조정 */
+        }
+
+        .message .right {
+            flex-grow: 1;
+            /* 오른쪽 영역은 배경색을 넣지 않음 */
+        }
+
+        .user {
+            justify-content: flex-end;
+            text-align: right;
+            flex-direction: row-reverse; /* 오른쪽 정렬 */
+        }
+
+        .user .left {
+            background-color: #d1e7ff; /* 사용자 배경색 */
+        }
+
+        .bot {
+            justify-content: flex-start;
+            text-align: left;
+        }
+
+        .bot .left {
+            background-color: #e6f7d3; /* 봇 배경색 */
+        }
+
+        .sentiment {
+            font-size: 0.85em;
+            color: gray;
+            padding-left: 10px;
+            text-align: right;
+        }
+
+        .input-container {
+            display: flex;
+            padding: 15px;
+            background-color: #ffffff;
+            border-top: 2px solid #eee;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 25px;
+            font-size: 16px;
+            margin-right: 15px;
+            outline: none;
+            transition: border-color 0.3s;
+            resize: none;
+            line-height: 1.5;
+            min-height: 45px;
+        }
+
+        #messageInput:focus {
+            border-color: #007bff;
+        }
+
+        button {
+            padding: 12px 18px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:focus {
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="chat-container">
+        <div class="chat-box" id="chat"></div>
+        <div class="input-container">
+            <textarea id="messageInput" placeholder="Type your message..." onkeydown="handleKeyPress(event)"></textarea>
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatHistory = {{ chat_history | tojson }};  // Jinja2 템플릿을 사용해 chat_history를 클라이언트로 전달
+
+        // 채팅 기록을 화면에 추가하는 함수
+        function displayChatHistory() {
+            const chatBox = document.getElementById('chat');
+            chatHistory.forEach(msg => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message ' + (msg.role === 'user' ? 'user' : 'bot');
+                const leftDiv = document.createElement('div');
+                leftDiv.className = 'left';
+                leftDiv.innerHTML = (msg.role === 'user' ? 'You: ' : 'Bot: ') + msg.content.replace(/\n/g, "<br>");
+                const rightDiv = document.createElement('div');
+                rightDiv.className = 'right';
+                messageDiv.appendChild(leftDiv);
+                messageDiv.appendChild(rightDiv);
+                chatBox.appendChild(messageDiv);
+            });
+        }
+
+        // 화면에 기존 대화 기록 표시
+        displayChatHistory();
+
+        // 메시지 전송 함수
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const chatBox = document.getElementById('chat');
+            const userMessage = input.value;
+
+            if (!userMessage.trim()) return;
+
+            // 사용자 메시지 추가
+            const userDiv = document.createElement('div');
+            userDiv.className = 'message user';
+            const userLeft = document.createElement('div');
+            userLeft.className = 'left';
+            userLeft.innerHTML = 'You: ' + userMessage.replace(/\n/g, "<br>");  // 입력에서 줄바꿈 처리
+            const userRight = document.createElement('div');
+            userRight.className = 'right';
+            userDiv.appendChild(userLeft);
+            userDiv.appendChild(userRight);
+            chatBox.appendChild(userDiv);
+
+            // 입력 초기화
+            input.value = '';
+
+            // 서버에 메시지 전송
+            fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ message: userMessage })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const botMessage = data.message || data.error;
+                const sentiment = data.sentiment || 'neutral';  // 감정 분석 결과 가져오기
+
+                // 감정 분석 결과 표시
+                const sentimentDiv = document.createElement('div');
+                sentimentDiv.className = 'sentiment';
+                sentimentDiv.textContent = 'Sentiment: ' + sentiment;
+                chatBox.appendChild(sentimentDiv);
+
+                // 봇 메시지를 HTML로 표시 (여기서도 줄바꿈 처리)
+                const botDiv = document.createElement('div');
+                botDiv.className = 'message bot';
+                const botLeft = document.createElement('div');
+                botLeft.className = 'left';
+                botLeft.innerHTML = 'Bot: ' + botMessage.replace(/\n/g, "<br>");  // 봇 메시지에서도 줄바꿈 처리
+                const botRight = document.createElement('div');
+                botRight.className = 'right';
+                botDiv.appendChild(botLeft);
+                botDiv.appendChild(botRight);
+                chatBox.appendChild(botDiv);
+
+                // 스크롤을 가장 아래로 내리기
+                chatBox.scrollTop = chatBox.scrollHeight;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        // 엔터 키로 메시지 보내기, Shift+Enter로 줄바꿈
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && event.shiftKey) {
+                return;  // Shift + Enter로 줄 바꿈
+            }
+
+            if (event.key === 'Enter') {
+                event.preventDefault();  // 기본 Enter 동작(줄 바꿈)을 막고
+                sendMessage();
+            }
+        }
+    </script>
+
+</body>
+</html>
